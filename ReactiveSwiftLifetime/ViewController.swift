@@ -4,18 +4,8 @@ import UIKit
 
 class ViewController: UIViewController {
     
-    let interval: TimeInterval
-    
-    init(interval: TimeInterval) {
-        self.interval = interval
-        super.init(nibName: nil, bundle: nil)
-    }
-    
-    @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        interval = 1
-        super.init(coder: coder)
-    }
+    let id: UUID = .init()
+    var counter: Int = 0
     
     lazy var button: UIButton = {
         let button = UIButton()
@@ -27,7 +17,7 @@ class ViewController: UIViewController {
     }()
     
     @objc private func presentChild() {
-        present(ViewController(interval: interval + 1), animated: true)
+        present(ViewController(), animated: true)
     }
 
     override func viewDidLoad() {
@@ -37,25 +27,49 @@ class ViewController: UIViewController {
         view.addSubview(button)
         button.center = view.center
         
-        let interval = self.interval
-        
-        timerSignalProducer(interval: interval)
-            .take(duringLifetimeOf: self)
-            .startWithValues { value in
-                print("timeElapsed = \(value) : interval = \(interval)")
+        timerSignalProducer(interval: 1)
+            .take(duringLifetimeOf: self) // TYPE 1
+            .flatMap(.concat) { [weak self] counter in
+                self?.delayedSignalProducer(for: counter) ?? .empty
             }
+//            .take(duringLifetimeOf: self) // TYPE 2
+            .startWithValues { [weak self, id] _ in
+                debugPrint(id, self?.state)
+            }
+    }
+    
+    var state: String {
+        "\(id.uuidString): \(counter)"
     }
 }
 
 extension ViewController {
     
+    func delayedSignalProducer(for counter: Int) -> SignalProducer<Int, Never> {
+        SignalProducer { [id] observer, lifetime in
+            let timer = Timer.scheduledTimer(withTimeInterval: 5, repeats: false) { _ in
+                debugPrint(id, "delayedSignalProducer: \(counter)")
+                observer.send(value: counter)
+                observer.send(.completed)
+            }
+            
+            lifetime.observeEnded {
+                timer.invalidate()
+            }
+        }
+    }
+    
     func timerSignalProducer(interval: TimeInterval) -> SignalProducer<Int, Never> {
-        return SignalProducer { observer, lifetime in
+        return SignalProducer { [id] observer, lifetime in
             
-            var i = 0
-            
-            let timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { _ in
-                observer.send(value: i)
+            let timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self, id] _ in
+                guard let self else {
+                    return
+                }
+                
+                debugPrint(self.id, "timerSignalProducer: \(self.counter)")
+                observer.send(value: self.counter)
+                self.counter += 1
             }
             
             lifetime.observeEnded {
