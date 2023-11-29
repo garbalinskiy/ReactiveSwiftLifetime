@@ -1,11 +1,12 @@
+import ReactiveCocoa
 import ReactiveSwift
 import UIKit
 
 class ViewController: UIViewController {
     
-    let interval: Int
+    let interval: TimeInterval
     
-    init(interval: Int) {
+    init(interval: TimeInterval) {
         self.interval = interval
         super.init(nibName: nil, bundle: nil)
     }
@@ -39,6 +40,7 @@ class ViewController: UIViewController {
         let interval = self.interval
         
         timerSignalProducer(interval: interval)
+            .take(duringLifetimeOf: self)
             .startWithValues { value in
                 print("timeElapsed = \(value) : interval = \(interval)")
             }
@@ -47,21 +49,30 @@ class ViewController: UIViewController {
 
 extension ViewController {
     
-    func timerSignalProducer(interval: Int) -> SignalProducer<Int, Never> {
+    func timerSignalProducer(interval: TimeInterval) -> SignalProducer<Int, Never> {
         return SignalProducer { observer, lifetime in
-            for i in 0 ..< 10 {
-                let timeElapsed = interval * i
-                DispatchQueue.main.asyncAfter(deadline: .now() + Double(timeElapsed)) {
-                    guard !lifetime.hasEnded else {
-                        observer.sendInterrupted()
-                        return
-                    }
-                    observer.send(value: timeElapsed)
-                    if i == 9 {
-                        observer.sendCompleted()
-                    }
-                }
+            
+            var i = 0
+            
+            let timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { _ in
+                observer.send(value: i)
             }
+            
+            lifetime.observeEnded {
+                timer.invalidate()
+            }
+            
+//            DispatchQueue.main.asyncAfter(deadline: .now() + Double(timeElapsed)) {
+//                guard !lifetime.hasEnded else {
+//                    observer.sendInterrupted()
+//                    return
+//                }
+                    
+//                    if i == 9 {
+//                        observer.sendCompleted()
+//                    }
+//            }
+            
         }
     }
     
